@@ -1,7 +1,3 @@
-"""
-AI Text Detector - Scikit-learn Model Training
-Lightweight, production-ready model for easy deployment
-"""
 
 import numpy as np
 import pandas as pd
@@ -38,10 +34,7 @@ except LookupError:
 
 
 class TextFeatureExtractor(BaseEstimator, TransformerMixin):
-    """
-    Custom feature extractor for AI detection
-    Implements micro-level trait analysis
-    """
+    
     
     def __init__(self):
         self.feature_names_ = []
@@ -50,7 +43,6 @@ class TextFeatureExtractor(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, X):
-        """Extract features from text"""
         features = []
         
         for text in X:
@@ -60,7 +52,6 @@ class TextFeatureExtractor(BaseEstimator, TransformerMixin):
         return np.array(features)
     
     def _extract_features(self, text):
-        """Extract comprehensive features from text"""
         features = {}
         
         # Basic statistics

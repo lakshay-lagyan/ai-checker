@@ -1,7 +1,3 @@
-# ============================================================================
-# FILE: app.py (Lightweight FastAPI for Render deployment)
-# ============================================================================
-
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
