@@ -1,6 +1,10 @@
+"""
+AI Text Detector - Fixed FastAPI for Render
+Resolves pickle loading issues with custom classes
+"""
+
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import pickle
@@ -10,14 +14,143 @@ import PyPDF2
 import docx
 import io
 import os
+import re
+from collections import Counter
+from sklearn.base import BaseEstimator, TransformerMixin
+
+# Define TextFeatureExtractor in the same file to avoid pickle issues
+class TextFeatureExtractor(BaseEstimator, TransformerMixin):
+    """Custom feature extractor for AI detection"""
+    
+    def __init__(self):
+        self.feature_names_ = []
+    
+    def fit(self, X, y=None):
+        return self
+    
+    def transform(self, X):
+        features = []
+        for text in X:
+            feature_dict = self._extract_features(text)
+            features.append(list(feature_dict.values()))
+        return np.array(features)
+    
+    def _extract_features(self, text):
+        features = {}
+        words = text.split()
+        sentences = self._split_sentences(text)
+        
+        features['word_count'] = len(words)
+        features['sentence_count'] = len(sentences)
+        features['avg_word_length'] = np.mean([len(w) for w in words]) if words else 0
+        features['avg_sentence_length'] = np.mean([len(s.split()) for s in sentences]) if sentences else 0
+        
+        unique_words = len(set(words))
+        features['lexical_diversity'] = unique_words / len(words) if words else 0
+        
+        features['punctuation_ratio'] = sum(1 for c in text if c in '.,!?;:') / len(text) if text else 0
+        features['exclamation_ratio'] = text.count('!') / len(text) if text else 0
+        features['question_ratio'] = text.count('?') / len(text) if text else 0
+        
+        ai_phrases = ['it is important to note', 'furthermore', 'moreover', 'consequently',
+                     'therefore', 'in conclusion', 'additionally', 'however', 'nevertheless']
+        features['ai_phrase_count'] = sum(text.lower().count(phrase) for phrase in ai_phrases)
+        features['ai_phrase_density'] = features['ai_phrase_count'] / len(words) if words else 0
+        
+        human_phrases = ['i think', 'i believe', 'in my opinion', 'you know', 'like',
+                        'basically', 'actually', 'honestly', 'i mean']
+        features['human_phrase_count'] = sum(text.lower().count(phrase) for phrase in human_phrases)
+        features['human_phrase_density'] = features['human_phrase_count'] / len(words) if words else 0
+        
+        sentence_lengths = [len(s.split()) for s in sentences]
+        features['sentence_length_variance'] = np.var(sentence_lengths) if len(sentence_lengths) > 1 else 0
+        features['sentence_length_std'] = np.std(sentence_lengths) if len(sentence_lengths) > 1 else 0
+        
+        features['coherence_score'] = self._calculate_coherence(sentences)
+        features['pacing_consistency'] = self._calculate_pacing_consistency(sentence_lengths)
+        
+        features['complex_word_ratio'] = sum(1 for w in words if len(w) > 7) / len(words) if words else 0
+        features['simple_word_ratio'] = sum(1 for w in words if len(w) <= 4) / len(words) if words else 0
+        
+        transition_words = ['furthermore', 'moreover', 'however', 'therefore', 'consequently', 'additionally']
+        features['transition_word_count'] = sum(text.lower().count(word) for word in transition_words)
+        features['transition_density'] = features['transition_word_count'] / len(words) if words else 0
+        
+        features['word_repetition'] = self._calculate_repetition(words)
+        features['formality_score'] = self._calculate_formality(text)
+        features['mixed_register_score'] = self._detect_mixed_register(text)
+        features['artificial_error_score'] = self._detect_artificial_errors(text)
+        
+        return features
+    
+    def _split_sentences(self, text):
+        sentences = re.split(r'[.!?]+', text)
+        return [s.strip() for s in sentences if s.strip()]
+    
+    def _calculate_coherence(self, sentences):
+        if len(sentences) < 2:
+            return 0.5
+        coherence_scores = []
+        for i in range(len(sentences) - 1):
+            words1 = set(sentences[i].lower().split())
+            words2 = set(sentences[i + 1].lower().split())
+            overlap = len(words1 & words2) / max(len(words1), len(words2), 1)
+            coherence_scores.append(overlap)
+        return np.mean(coherence_scores)
+    
+    def _calculate_pacing_consistency(self, sentence_lengths):
+        if len(sentence_lengths) < 2:
+            return 1.0
+        mean_length = np.mean(sentence_lengths)
+        std_length = np.std(sentence_lengths)
+        cv = std_length / mean_length if mean_length > 0 else 0
+        return 1 - min(cv, 1.0)
+    
+    def _calculate_repetition(self, words):
+        if not words:
+            return 0
+        word_counts = Counter(words)
+        repeated = sum(1 for count in word_counts.values() if count > 1)
+        return repeated / len(word_counts)
+    
+    def _calculate_formality(self, text):
+        formal_indicators = ['utilize', 'commence', 'endeavor', 'facilitate', 'implement']
+        informal_indicators = ['gonna', 'wanna', 'yeah', 'ok', 'cool']
+        formal_count = sum(text.lower().count(word) for word in formal_indicators)
+        informal_count = sum(text.lower().count(word) for word in informal_indicators)
+        total = formal_count + informal_count
+        if total == 0:
+            return 0.5
+        return formal_count / total
+    
+    def _detect_mixed_register(self, text):
+        formal_count = sum(text.lower().count(word) for word in [
+            'furthermore', 'moreover', 'consequently', 'therefore'
+        ])
+        casual_count = sum(text.lower().count(word) for word in [
+            'super', 'kinda', 'sorta', 'basically', 'literally'
+        ])
+        if formal_count > 1 and casual_count > 1:
+            return 1.0
+        return 0.0
+    
+    def _detect_artificial_errors(self, text):
+        words = text.split()
+        if not words:
+            return 0
+        potential_typos = sum(1 for w in words if len(w) > 4 and not w.isalpha() and w.isalnum())
+        typo_rate = potential_typos / len(words)
+        if 0.01 < typo_rate < 0.05:
+            return 0.8
+        return 0.2
+
 
 app = FastAPI(
     title="AI Text Detector API",
-    description="99% accurate AI text detection with micro-level trait analysis",
+    description="99% accurate AI text detection",
     version="1.0.0"
 )
 
-# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,7 +160,11 @@ app.add_middleware(
 )
 
 # Global model variables
-model_detector = None
+model = None
+vectorizer = None
+feature_extractor = None
+scaler = None
+training_history = {}
 
 
 class DetectionResponse(BaseModel):
@@ -42,27 +179,45 @@ class DetectionResponse(BaseModel):
 
 def load_model():
     """Load the trained model"""
-    global model_detector
+    global model, vectorizer, feature_extractor, scaler, training_history
     
-    if model_detector is None:
+    if model is None:
         print("📥 Loading AI detector model...")
         
         model_path = Path('models/')
         
+        if not model_path.exists():
+            print("⚠️  Models directory not found. Using fallback detection.")
+            return False
+        
         try:
-            # Import the model class
-            from train_sklearn_model import AITextDetectorModel
+            with open(model_path / 'model.pkl', 'rb') as f:
+                model = pickle.load(f)
             
-            model_detector = AITextDetectorModel()
-            model_detector.load(model_path)
+            with open(model_path / 'vectorizer.pkl', 'rb') as f:
+                vectorizer = pickle.load(f)
+            
+            # Use local TextFeatureExtractor class
+            feature_extractor = TextFeatureExtractor()
+            
+            with open(model_path / 'scaler.pkl', 'rb') as f:
+                scaler = pickle.load(f)
+            
+            # Load training history
+            import json
+            with open(model_path / 'training_history.json', 'r') as f:
+                training_history = json.load(f)
             
             print("✅ Model loaded successfully")
+            print(f"   Validation Accuracy: {training_history.get('val_accuracy', 0)*100:.2f}%")
+            return True
+            
         except Exception as e:
             print(f"⚠️  Error loading model: {e}")
             print("   Using fallback detection")
-            model_detector = None
+            return False
     
-    return model_detector
+    return model is not None
 
 
 @app.on_event("startup")
@@ -74,24 +229,28 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
     return {
         "status": "online",
         "service": "AI Text Detector",
         "version": "1.0.0",
-        "accuracy": "99%"
+        "accuracy": "99%",
+        "endpoints": {
+            "health": "/health",
+            "detect_text": "/detect/text",
+            "detect_file": "/detect/file",
+            "model_info": "/model/info"
+        }
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
-    model = load_model()
+    model_loaded = load_model()
     
     return {
         "status": "healthy",
-        "model_loaded": model is not None,
-        "model_accuracy": model.training_history.get('val_accuracy', 0) * 100 if model else 0
+        "model_loaded": model_loaded,
+        "model_accuracy": training_history.get('val_accuracy', 0) * 100 if model_loaded else 0
     }
 
 
@@ -131,21 +290,24 @@ def extract_text_from_file(file: UploadFile) -> str:
 
 def analyze_with_model(text: str) -> dict:
     """Analyze text using the ML model"""
-    model = load_model()
+    model_loaded = load_model()
     
-    if model is None:
-        # Fallback to rule-based detection
+    if not model_loaded or model is None:
         return fallback_detection(text)
     
     try:
-        # Get model prediction
-        predictions, probabilities = model.predict([text])
+        # Prepare features
+        tfidf_features = vectorizer.transform([text]).toarray()
+        custom_features = feature_extractor.transform([text])
+        custom_features_scaled = scaler.transform(custom_features)
+        combined_features = np.hstack([tfidf_features, custom_features_scaled])
         
-        prediction = predictions[0]
-        proba = probabilities[0]
+        # Get predictions
+        prediction = model.predict(combined_features)[0]
+        probabilities = model.predict_proba(combined_features)[0]
         
-        ai_prob = float(proba[1])
-        human_prob = float(proba[0])
+        ai_prob = float(probabilities[1])
+        human_prob = float(probabilities[0])
         
         # Determine verdict
         if ai_prob >= 0.75:
@@ -158,22 +320,21 @@ def analyze_with_model(text: str) -> dict:
             verdict = "Uncertain"
             confidence = 50.0 + abs(ai_prob - 0.5) * 100
         
-        # Extract features for analysis details
-        features = model.feature_extractor._extract_features(text)
+        # Extract features
+        features = feature_extractor._extract_features(text)
         
-        # Build response
-        result = {
+        return {
             "ai_probability": round(ai_prob, 4),
             "human_probability": round(human_prob, 4),
             "verdict": verdict,
             "confidence_score": round(confidence, 2),
             "analysis_details": {
-                "lexical_diversity": features.get('lexical_diversity', 0),
-                "ai_phrase_density": features.get('ai_phrase_density', 0),
-                "sentence_length_variance": features.get('sentence_length_variance', 0),
-                "pacing_consistency": features.get('pacing_consistency', 0),
-                "formality_score": features.get('formality_score', 0),
-                "mixed_register_score": features.get('mixed_register_score', 0),
+                "lexical_diversity": round(features.get('lexical_diversity', 0), 3),
+                "ai_phrase_density": round(features.get('ai_phrase_density', 0), 3),
+                "sentence_length_variance": round(features.get('sentence_length_variance', 0), 2),
+                "pacing_consistency": round(features.get('pacing_consistency', 0), 3),
+                "formality_score": round(features.get('formality_score', 0), 3),
+                "mixed_register_score": round(features.get('mixed_register_score', 0), 1),
             },
             "traits_detected": extract_traits(features, ai_prob),
             "detection_methods": [
@@ -186,30 +347,23 @@ def analyze_with_model(text: str) -> dict:
             ]
         }
         
-        return result
-        
     except Exception as e:
         print(f"Error in model prediction: {e}")
         return fallback_detection(text)
 
 
 def fallback_detection(text: str) -> dict:
-    """Fallback rule-based detection if model fails"""
+    """Fallback rule-based detection"""
     words = text.split()
-    sentences = text.split('.')
     
-    # AI indicators
     ai_phrases = ['furthermore', 'moreover', 'consequently', 'therefore', 'it is important to note']
-    ai_score = sum(text.lower().count(phrase) for phrase in ai_phrases) / len(words) * 100
+    ai_score = sum(text.lower().count(phrase) for phrase in ai_phrases) / len(words) * 100 if words else 0
     
-    # Human indicators
     human_phrases = ['i think', 'you know', 'like', 'basically', 'honestly']
-    human_score = sum(text.lower().count(phrase) for phrase in human_phrases) / len(words) * 100
+    human_score = sum(text.lower().count(phrase) for phrase in human_phrases) / len(words) * 100 if words else 0
     
-    # Lexical diversity
     lexical_diversity = len(set(words)) / len(words) if words else 0
     
-    # Determine verdict
     if ai_score > human_score and lexical_diversity < 0.6:
         verdict = "AI-Generated"
         ai_prob = 0.75
@@ -226,11 +380,11 @@ def fallback_detection(text: str) -> dict:
         "verdict": verdict,
         "confidence_score": 70.0,
         "analysis_details": {
-            "ai_phrase_score": ai_score,
-            "human_phrase_score": human_score,
-            "lexical_diversity": lexical_diversity
+            "ai_phrase_score": round(ai_score, 2),
+            "human_phrase_score": round(human_score, 2),
+            "lexical_diversity": round(lexical_diversity, 3)
         },
-        "traits_detected": ["Rule-based analysis"],
+        "traits_detected": ["Rule-based analysis (model not available)"],
         "detection_methods": ["fallback_rule_based"]
     }
 
@@ -248,18 +402,14 @@ def extract_traits(features: dict, ai_prob: float) -> List[str]:
             traits.append("Low sentence length variance")
         if 0.4 <= features.get('lexical_diversity', 0) <= 0.6:
             traits.append("Moderate lexical diversity (AI pattern)")
-        if features.get('formality_score', 0) > 0.7:
-            traits.append("High formality score")
     else:
         if features.get('human_phrase_density', 0) > 0.02:
             traits.append("Natural human conversational markers")
         if features.get('sentence_length_variance', 0) > 10:
             traits.append("High sentence length variation")
-        if features.get('lexical_diversity', 0) > 0.7 or features.get('lexical_diversity', 0) < 0.3:
-            traits.append("Natural lexical diversity range")
     
     if features.get('mixed_register_score', 0) > 0.5:
-        traits.append("Mixed register detected (possible humanization attempt)")
+        traits.append("Mixed register (possible humanization attempt)")
     
     if not traits:
         traits.append("Standard text patterns detected")
@@ -283,7 +433,6 @@ async def detect_text(text: str = Form(...)):
 @app.post("/detect/file", response_model=DetectionResponse)
 async def detect_file(file: UploadFile = File(...)):
     """Detect if file content is AI-generated"""
-    # Extract text from file
     text = extract_text_from_file(file)
     
     if not text or len(text.strip()) < 50:
@@ -299,22 +448,23 @@ async def detect_file(file: UploadFile = File(...)):
 @app.get("/model/info")
 async def model_info():
     """Get model information"""
-    model = load_model()
+    model_loaded = load_model()
     
-    if model:
+    if model_loaded:
         return {
             "model_type": "Scikit-learn Ensemble",
-            "accuracy": model.training_history.get('val_accuracy', 0) * 100,
-            "f1_score": model.training_history.get('f1_score', 0) * 100,
-            "precision": model.training_history.get('precision', 0) * 100,
-            "recall": model.training_history.get('recall', 0) * 100,
-            "training_date": model.training_history.get('training_date', 'Unknown')
+            "accuracy": training_history.get('val_accuracy', 0) * 100,
+            "f1_score": training_history.get('f1_score', 0) * 100,
+            "precision": training_history.get('precision', 0) * 100,
+            "recall": training_history.get('recall', 0) * 100,
+            "training_date": training_history.get('training_date', 'Unknown'),
+            "status": "loaded"
         }
     
     return {
         "model_type": "Fallback rule-based",
         "accuracy": 70.0,
-        "status": "Model not loaded"
+        "status": "Model not loaded - using fallback"
     }
 
 
@@ -322,345 +472,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("app:app", host="0.0.0.0", port=port)
-
-
-# ============================================================================
-# FILE: requirements.txt
-# ============================================================================
-
-"""
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-python-multipart==0.0.6
-PyPDF2==3.0.1
-python-docx==1.1.0
-numpy==1.26.2
-scikit-learn==1.3.2
-pandas==2.1.4
-nltk==3.8.1
-"""
-
-
-# ============================================================================
-# FILE: Dockerfile (for Render)
-# ============================================================================
-
-"""
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Download NLTK data
-RUN python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
-
-# Copy application code
-COPY . .
-
-# Create models directory
-RUN mkdir -p models
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:8000/health')"
-
-# Run application
-CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
-"""
-
-
-# ============================================================================
-# FILE: render.yaml (Render deployment config)
-# ============================================================================
-
-"""
-services:
-  - type: web
-    name: ai-text-detector
-    env: python
-    region: oregon
-    plan: free
-    branch: main
-    buildCommand: pip install -r requirements.txt && python train_sklearn_model.py
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: PORT
-        value: 8000
-    healthCheckPath: /health
-"""
-
-
-# ============================================================================
-# FILE: .dockerignore
-# ============================================================================
-
-"""
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-.env
-.venv
-env/
-venv/
-.git
-.gitignore
-.vscode/
-.idea/
-*.md
-.DS_Store
-tests/
-data/
-notebooks/
-"""
-
-
-# ============================================================================
-# FILE: deploy_to_render.md (Deployment guide)
-# ============================================================================
-
-"""
-# Deploy AI Text Detector to Render
-
-## Prerequisites
-- GitHub account
-- Render account (free tier available)
-- Trained model files in `models/` directory
-
-## Step-by-Step Deployment
-
-### 1. Prepare Repository
-
-```bash
-# Initialize git repository
-git init
-git add .
-git commit -m "Initial commit: AI Text Detector"
-
-# Create GitHub repository and push
-git remote add origin https://github.com/yourusername/ai-text-detector.git
-git branch -M main
-git push -u origin main
-```
-
-### 2. Train Model Locally
-
-```bash
-# Train the model
-python train_sklearn_model.py
-
-# Verify model files exist
-ls models/
-# Should see: model.pkl, vectorizer.pkl, feature_extractor.pkl, scaler.pkl
-```
-
-### 3. Deploy to Render
-
-#### Option A: Using Render Dashboard
-
-1. Go to https://render.com
-2. Click "New +" → "Web Service"
-3. Connect your GitHub repository
-4. Configure:
-   - **Name**: ai-text-detector
-   - **Environment**: Python 3
-   - **Build Command**: `pip install -r requirements.txt && python train_sklearn_model.py`
-   - **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
-   - **Plan**: Free
-5. Click "Create Web Service"
-
-#### Option B: Using render.yaml
-
-1. Push `render.yaml` to your repository
-2. In Render dashboard, click "New +" → "Blueprint"
-3. Connect repository
-4. Render will auto-detect render.yaml
-
-### 4. Configure Environment Variables (Optional)
-
-In Render dashboard → Environment:
-- Add any custom variables if needed
-- PORT is automatically set by Render
-
-### 5. Monitor Deployment
-
-- Watch build logs in Render dashboard
-- Wait for "Build succeeded" message
-- Your API will be live at: `https://your-service-name.onrender.com`
-
-### 6. Test Deployment
-
-```bash
-# Test health endpoint
-curl https://your-service-name.onrender.com/health
-
-# Test detection
-curl -X POST https://your-service-name.onrender.com/detect/text \
-  -F "text=It is important to note that artificial intelligence has revolutionized technology."
-```
-
-### 7. Update Frontend
-
-Update your frontend `index.html`:
-
-```javascript
-const API_URL = 'https://your-service-name.onrender.com';
-```
-
-## Important Notes
-
-### Free Tier Limitations
-- Service spins down after 15 minutes of inactivity
-- First request after spin-down takes 30-60 seconds (cold start)
-- 750 hours/month free compute
-
-### Model Size
-- Keep model files under 100MB for faster deployments
-- Scikit-learn models are typically 10-50MB
-
-### Cold Start Optimization
-To keep service active:
-1. Use a service like UptimeRobot to ping your API every 14 minutes
-2. Or upgrade to a paid plan for always-on service
-
-## Troubleshooting
-
-### Build Fails
-- Check Python version (3.11 recommended)
-- Verify all dependencies in requirements.txt
-- Check build logs for specific errors
-
-### Model Not Loading
-- Ensure model files are committed to repository
-- Check file paths are correct
-- Verify model files are not in .gitignore
-
-### High Memory Usage
-- Reduce model complexity
-- Use fewer features in TfidfVectorizer
-- Consider model compression
-
-## Monitoring
-
-View logs in Render dashboard:
-- Click on your service
-- Go to "Logs" tab
-- Monitor for errors or performance issues
-
-## Updating
-
-To deploy updates:
-
-```bash
-git add .
-git commit -m "Update description"
-git push origin main
-```
-
-Render will automatically detect changes and redeploy.
-
-## Custom Domain (Optional)
-
-1. In Render dashboard → Settings
-2. Add custom domain
-3. Configure DNS records as instructed
-
-## Support
-
-- Render Docs: https://render.com/docs
-- Community: https://community.render.com
-"""
-
-
-# ============================================================================
-# FILE: test_api.py (Local testing script)
-# ============================================================================
-
-"""
-import requests
-import json
-
-API_URL = "http://localhost:8000"  # Change to your Render URL after deployment
-
-def test_health():
-    print("\\n🔍 Testing health endpoint...")
-    response = requests.get(f"{API_URL}/health")
-    print(f"Status: {response.status_code}")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
-
-def test_text_detection():
-    print("\\n🔍 Testing text detection...")
-    
-    test_cases = [
-        {
-            "name": "AI-Generated",
-            "text": "It is important to note that artificial intelligence has revolutionized numerous industries. Furthermore, machine learning algorithms demonstrate remarkable capabilities. Consequently, the future of technology appears increasingly promising. Moreover, these advancements necessitate careful ethical consideration."
-        },
-        {
-            "name": "Human-Written",
-            "text": "I've been thinking about AI lately, you know? Like, it's everywhere now. My phone has it, my car has it. It's pretty wild. I'm not really sure if it's all good though. What happens when these things make mistakes? That's what worries me, honestly."
-        }
-    ]
-    
-    for test in test_cases:
-        print(f"\\n--- Test: {test['name']} ---")
-        response = requests.post(
-            f"{API_URL}/detect/text",
-            data={"text": test["text"]}
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            print(f"Verdict: {result['verdict']}")
-            print(f"Confidence: {result['confidence_score']:.2f}%")
-            print(f"AI Probability: {result['ai_probability']:.2%}")
-            print(f"Traits: {', '.join(result['traits_detected'][:3])}")
-        else:
-            print(f"Error: {response.status_code}")
-            print(response.text)
-
-def test_model_info():
-    print("\\n🔍 Testing model info...")
-    response = requests.get(f"{API_URL}/model/info")
-    print(f"Response: {json.dumps(response.json(), indent=2)}")
-
-if __name__ == "__main__":
-    print("="*60)
-    print("🧪 AI TEXT DETECTOR - API TESTING")
-    print("="*60)
-    
-    try:
-        test_health()
-        test_model_info()
-        test_text_detection()
-        
-        print("\\n" + "="*60)
-        print("✅ ALL TESTS COMPLETED")
-        print("="*60)
-        
-    except requests.exceptions.ConnectionError:
-        print("\\n❌ ERROR: Cannot connect to API")
-        print(f"   Make sure API is running at {API_URL}")
-        print("   Run: python app.py")
-    except Exception as e:
-        print(f"\\n❌ ERROR: {e}")
-"""

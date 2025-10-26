@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Text Detector - 99% Accuracy</title>
+    <title>AI Text Detector</title>
     <style>
         * {
             margin: 0;
@@ -752,7 +752,6 @@
                 <div class="logo-icon">🛡️</div>
                 <div class="logo-text">
                     <h1>AI Text Detector</h1>
-                    <p>99% Accuracy • Micro-Level Analysis</p>
                 </div>
             </div>
             <div class="header-stats">
@@ -981,7 +980,7 @@
 
     <script>
         // Configuration
-        const API_URL = 'http://localhost:8000';
+        const API_URL = 'https://ai-text-detector-xris.onrender.com/';
         
         // State
         let sessionHistory = [];
@@ -1175,7 +1174,7 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                showAlert('Network error. Please ensure the API is running on http://localhost:8000', 'error');
+                showAlert('Network error. ', 'error');
             } finally {
                 setLoading(false, source);
             }
@@ -1207,7 +1206,7 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                showAlert('Network error. Please ensure the API is running on http://localhost:8000', 'error');
+                showAlert('Network error.', 'error');
             } finally {
                 setLoading(false, 'file');
             }
@@ -1436,31 +1435,4 @@
     </script>
 </body>
 </html>
-                            <div class="feature-icon">✓</div>
-                            <div class="feature-content">
-                                <div class="feature-title">Cognitive Process Reconstruction</div>
-                                <div class="feature-description">Reverse-engineers thinking patterns</div>
-                            </div>
-                        </li>
-                        <li class="feature-item">
-                            <div class="feature-icon">✓</div>
-                            <div class="feature-content">
-                                <div class="feature-title">Temporal Fingerprinting</div>
-                                <div class="feature-description">Analyzes writing as temporal process</div>
-                            </div>
-                        </li>
-                        <li class="feature-item">
-                            <div class="feature-icon">✓</div>
-                            <div class="feature-content">
-                                <div class="feature-title">Multi-Modal Verification</div>
-                                <div class="feature-description">Cross-references multiple streams</div>
-                            </div>
-                        </li>
-                        <li class="feature-item">
-                            <div class="feature-icon">✓</div>
-                            <div class="feature-content">
-                                <div class="feature-title">Spoofing Resistance</div>
-                                <div class="feature-description">Detects humanized AI content</div>
-                            </div>
-                        </li>
-                        <li class="feature-item">
+                
