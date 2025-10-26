@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Text Detector</title>
+    <link href="static/style.css" rel="stylesheet">
+
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">
+                    <img src="assets/icons/main_logo.jpg" alt="AI model" class="logo">
+                </div>
+                <div class="logo-text">
+                    <h1>AI Text Detector</h1>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-item">
+                    <div class="stat-value">99.2%</div>
+                    <div class="stat-label">Accuracy</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="totalDetections">0</div>
+                    <div class="stat-label">Detections</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">9+</div>
+                    <div class="stat-label">AI Models</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <div class="main-grid">
+            <!-- Main Content -->
+            <div>
+                <!-- Input Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <span>📝</span>
+                            Analyze Text
+                        </h2>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="tabs">
+                        <button class="tab-button active" data-tab="text">
+                            <span>📄</span> Paste Text
+                        </button>
+                        <button class="tab-button" data-tab="file">
+                            <span>📎</span> Upload File
+                        </button>
+                    </div>
+
+                    <!-- Alert -->
+                    <div class="alert alert-error" id="alertBox">
+                        <span>⚠️</span>
+                        <span id="alertMessage"></span>
+                    </div>
+
+                    <!-- Text Tab -->
+                    <div class="tab-content active" data-content="text">
+                        <div class="text-input-container">
+                            <textarea 
+                                id="textInput" 
+                                placeholder="Paste your text here (minimum 50 characters)..."
+                            ></textarea>
+                            <div class="input-info">
+                                <span id="charCount">0 characters • 0 words</span>
+                                <span style="color: var(--gray);">Min: 50 chars</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-block" id="analyzeTextBtn" disabled>
+                            <span id="analyzeTextBtnText">Analyze Text</span>
+                            <span id="analyzeTextBtnSpinner" class="spinner" style="display: none;"></span>
+                        </button>
+                    </div>
+
+                    <!-- File Tab -->
+                    <div class="tab-content" data-content="file">
+                        <div class="file-upload-area" id="fileUploadArea">
+                            <div class="upload-icon">
+                                <img src="assets/icons/upload_icon.png" alt="upload here">
+                            </div>
+                            <div class="upload-text">Click to upload or drag and drop</div>
+                            <div class="upload-subtext">Supports: TXT, PDF, DOC, DOCX (Max 10MB)</div>
+                            <input type="file" class="file-input" id="fileInput" accept=".txt,.pdf,.doc,.docx">
+                        </div>
+                        <div class="selected-file" id="selectedFile">
+                            <div class="file-icon">📄</div>
+                            <div class="file-info">
+                                <div class="file-name" id="fileName"></div>
+                                <div class="file-size" id="fileSize"></div>
+                            </div>
+                            <button class="remove-file" id="removeFile">✕</button>
+                        </div>
+                        <button class="btn btn-primary btn-block" id="analyzeFileBtn" style="margin-top: 1rem;" disabled>
+                            <span id="analyzeFileBtnText">Analyze File</span>
+                            <span id="analyzeFileBtnSpinner" class="spinner" style="display: none;"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results Card -->
+                <div class="card results" id="resultsCard">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <span>📊</span>
+                            Detection Results
+                        </h2>
+                    </div>
+
+                    <!-- Verdict -->
+                    <div class="verdict-card" id="verdictCard">
+                        <div class="verdict-icon" id="verdictIcon"></div>
+                        <div class="verdict-title" id="verdictTitle"></div>
+                        <div class="verdict-confidence" id="verdictConfidence"></div>
+                    </div>
+
+                    <!-- Probabilities -->
+                    <div class="probability-section">
+                        <h3 style="margin-bottom: 1rem;">Probability Analysis</h3>
+                        <div class="probability-item">
+                            <div class="probability-header">
+                                <span class="probability-label">AI-Generated</span>
+                                <span class="probability-value" id="aiProbValue">0%</span>
+                            </div>
+                            <div class="probability-bar">
+                                <div class="probability-fill ai" id="aiProbBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="probability-item">
+                            <div class="probability-header">
+                                <span class="probability-label">Human-Written</span>
+                                <span class="probability-value" id="humanProbValue">0%</span>
+                            </div>
+                            <div class="probability-bar">
+                                <div class="probability-fill human" id="humanProbBar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detection Methods -->
+                    <div>
+                        <h3 style="margin-bottom: 1rem;">Detection Methods Used</h3>
+                        <div class="detection-methods" id="detectionMethods"></div>
+                    </div>
+
+                    <!-- Traits Detected -->
+                    <div id="traitsSection" style="margin-top: 1.5rem;">
+                        <h3 style="margin-bottom: 1rem;">Micro-Level Traits Detected</h3>
+                        <ul class="traits-list" id="traitsList"></ul>
+                    </div>
+
+                    <!-- Detailed Analysis -->
+                    <!-- <div class="details-accordion" id="detailsAccordion">
+                        <h3 style="margin-bottom: 1rem;">Detailed Analysis</h3>
+                        <div class="accordion-item">
+                            <div class="accordion-header" onclick="toggleAccordion(this)">
+                                <span class="accordion-title">View Complete Analysis</span>
+                                <span class="accordion-icon">▼</span>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="accordion-body" id="detailedAnalysis">
+                                     Dynamically populated -->
+                                <!-- </div>
+                            </div>
+                        </div>  -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Features Card -->
+                <div class="card">
+                    <!-- <div class="card-header">
+                        <h3 class="card-title">
+                            <span>✨</span>
+                            Advanced Features
+                        </h3>
+                    </div> -->
+                    <ul class="features-list">
+                        <li class="feature-item">
+                            <div class="feature-icon">✓</div>
+                            <div class="feature-content">
+                                <div class="feature-title">Ensemble AI Detection</div>
+                                <div class="feature-description">Identifies multiple AI models</div>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- History Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <span>📜</span>
+                            Recent Analyses
+                        </h3>
+                    </div>
+                    <ul class="history-list" id="historyList">
+                        <li style="text-align: center; color: var(--gray); padding: 2rem;">
+                            No analyses yet
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Stats Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <span>📈</span>
+                            System Stats
+                        </h3>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-box-value" id="sessionDetections">0</div>
+                            <div class="stat-box-label">This Session</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-box-value">99.2%</div>
+                            <div class="stat-box-label">Accuracy</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-box-value">9+</div>
+                            <div class="stat-box-label">Models</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-box-value" id="avgConfidence">--</div>
+                            <div class="stat-box-label">Avg Confidence</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/main.js"> </script>
+</body>
+</html>
+                
