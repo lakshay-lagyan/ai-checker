@@ -1,6 +1,7 @@
 services:
+  # Backend API Service
   - type: web
-    name: ai-text-detector
+    name: ai-text-detector-api
     env: python
     region: oregon
     plan: free
@@ -13,3 +14,5 @@ services:
       - key: PORT
         value: 8000
     healthCheckPath: /health
+  
+ 
